@@ -5,6 +5,7 @@ import "net"
 import "os"
 import "net/rpc"
 import "net/http"
+import "fmt"
 
 
 type Coordinator struct {
@@ -38,6 +39,7 @@ func (c *Coordinator) server() {
 	if e != nil {
 		log.Fatal("listen error:", e)
 	}
+	fmt.Println("Coordinator server started")
 	go http.Serve(l, nil)
 }
 

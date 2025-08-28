@@ -24,6 +24,33 @@ type ExampleReply struct {
 
 // Add your RPC definitions here.
 
+type TaskStatus int
+
+const (
+    Idle TaskStatus = iota
+    InProgress
+    Completed
+)
+
+type TaskType int
+
+const (
+    MapTask TaskType = iota
+    ReduceTask
+)
+
+// Task represents a single map or reduce job.
+type Task struct {
+    TaskID     int
+    TaskType   TaskType
+    InputFile  string
+    NReduce    int
+    ReduceID   int
+    Status     TaskStatus
+    WorkerID   int
+    StartTime  time.Time
+}
+
 
 // Cook up a unique-ish UNIX-domain socket name
 // in /var/tmp, for the coordinator.
