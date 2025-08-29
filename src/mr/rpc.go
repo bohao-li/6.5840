@@ -38,6 +38,8 @@ type TaskType int
 const (
     MapTask TaskType = iota
     ReduceTask
+    WaitTask
+    DoneTask
 )
 
 // Task represents a single map or reduce job.
@@ -57,7 +59,18 @@ type GetTaskArgs struct {
 }
 
 type GetTaskReply struct {
-	Task *Task
+	Task Task
+}
+
+// TaskCompletedArgs holds the arguments for a worker reporting a completed task.
+type TaskCompletedArgs struct {
+    TaskID   int
+    TaskType TaskType
+}
+
+// TaskCompletedReply holds the reply for a completed task report.
+// It can be empty since the worker doesn't need a response other than confirmation.
+type TaskCompletedReply struct {
 }
 
 // Cook up a unique-ish UNIX-domain socket name
