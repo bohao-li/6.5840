@@ -30,6 +30,13 @@ func MakeClerk(clnt *tester.Clnt, server string) kvtest.IKVClerk {
 // arguments. Additionally, reply must be passed as a pointer.
 func (ck *Clerk) Get(key string) (string, rpc.Tversion, rpc.Err) {
 	// You will have to modify this function.
+	args := rpc.GetArgs{Key: key}
+	var reply rpc.GetReply
+
+	ok := ck.clnt.Call(ck.server, "KVServer.Get", &args, &reply)
+	if ok {
+		return reply.Value, reply.Version, reply.Err
+	} 
 	return "", 0, rpc.ErrNoKey
 }
 
@@ -51,6 +58,32 @@ func (ck *Clerk) Get(key string) (string, rpc.Tversion, rpc.Err) {
 // must match the declared types of the RPC handler function's
 // arguments. Additionally, reply must be passed as a pointer.
 func (ck *Clerk) Put(key, value string, version rpc.Tversion) rpc.Err {
-	// You will have to modify this function.
-	return rpc.ErrNoKey
+    args := rpc.PutArgs{Key: key, Value: value, Version: version}
+    var reply rpc.PutReply
+
+    isFirstAttempt := true
+    maxRetries := 5 // Set a reasonable maximum number of retries
+    retryCount := 0
+
+    for retryCount < maxRetries {
+        ok := ck.clnt.Call(ck.server, "KVServer.Put", &args, &reply)
+        if ok {
+            if reply.Err == rpc.ErrVersion {
+                if isFirstAttempt {
+                    return rpc.ErrVersion
+                } else {
+                    return rpc.ErrMaybe
+                }
+            }
+            return reply.Err
+        }
+
+        // The RPC call failed.
+        isFirstAttempt = false
+        retryCount++
+    }
+
+    // If the loop finishes without a successful RPC call, it means
+    // we've exhausted all retries.
+    return rpc.ErrNoKey // Or a specific error indicating a timeout/failure
 }

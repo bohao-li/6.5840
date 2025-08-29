@@ -20,7 +20,7 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 
 
 type KVServer struct {
-	mu sync.Mutex
+	mu sync.RWMutex
 
 	// version
 	version rpc.Tversion
@@ -38,14 +38,18 @@ func MakeKVServer() *KVServer {
 // Get returns the value and version for args.Key, if args.Key
 // exists. Otherwise, Get returns ErrNoKey.
 func (kv *KVServer) Get(args *rpc.GetArgs, reply *rpc.GetReply) {
+	kv.mu.RLock()
+	defer kv.mu.RUnlock()
 	// Your code here.
 	key := args.Key
 	if value, ok := kv.store[key]; ok {
 		reply.Value = value
 		reply.Version = kv.version
+		reply.Err = rpc.OK
 	} else {
 		reply.Err = rpc.ErrNoKey
 	}
+	return
 }
 
 // Update the value for a key if args.Version matches the version of
@@ -62,6 +66,7 @@ func (kv *KVServer) Put(args *rpc.PutArgs, reply *rpc.PutReply) {
 		if args.Version == kv.version {
 			kv.store[key] = args.Value
 			kv.version++
+			reply.Err = rpc.OK
 		} else {
 			reply.Err = rpc.ErrVersion
 		}
@@ -69,10 +74,12 @@ func (kv *KVServer) Put(args *rpc.PutArgs, reply *rpc.PutReply) {
 		if args.Version == 0 {
 			kv.store[key] = args.Value
 			kv.version++
+			reply.Err = rpc.OK
 		} else {
 			reply.Err = rpc.ErrNoKey
 		}
 	}
+	return
 }
 
 // You can ignore Kill() for this lab
