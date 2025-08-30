@@ -2,14 +2,15 @@ package lock
 
 import (
 	"fmt"
+
 	//	"log"
 	"strconv"
 	"testing"
 	"time"
 
-	"6.5840/kvsrv1"
+	kvsrv "6.5840/kvsrv1"
 	"6.5840/kvsrv1/rpc"
-	"6.5840/kvtest1"
+	kvtest "6.5840/kvtest1"
 )
 
 const (
@@ -42,7 +43,7 @@ func oneClient(t *testing.T, me int, ck kvtest.IKVClerk, done chan struct{}) kvt
 
 			err = ck.Put("l0", string(b), ver)
 			if !(err == rpc.OK || err == rpc.ErrMaybe) {
-				t.Fatalf("%d: put failed %v", me, err)
+				t.Fatalf("%d: put failed %v version %d", me, err, ver)
 			}
 
 			time.Sleep(10 * time.Millisecond)

@@ -24,6 +24,7 @@ type Lock struct {
 	// store lock state, name and version
 	state string
 	name  string
+	uid   string
 }
 
 // The tester calls MakeLock() and passes in a k/v clerk; your code can
@@ -32,7 +33,7 @@ type Lock struct {
 // Use l as the key to store the "lock state" (you would have to decide
 // precisely what the lock state is).
 func MakeLock(ck kvtest.IKVClerk, l string) *Lock {
-	lk := &Lock{ck: ck, name: l, state: LockStateUnlocked}
+	lk := &Lock{ck: ck, name: l, state: LockStateUnlocked, uid: kvtest.RandValue(8)}
 
 	// Initialize the lock state in the key-value store
 	lk.ck.Put(l, lk.state, 0)
@@ -41,42 +42,47 @@ func MakeLock(ck kvtest.IKVClerk, l string) *Lock {
 }
 
 func (lk *Lock) Acquire() {
-	// Get the lock status from kv cache
-	status, version, err := lk.ck.Get(lk.name)
-
-	if err == rpc.OK && status == LockStateUnlocked {
-		// Lock is available, acquire it
-		putErr := lk.ck.Put(lk.name, LockStateLocked, version)
-		if putErr == rpc.OK {
-			lk.state = LockStateLocked
-			return
-		}
-	}
-
 	for {
-		time.Sleep(10 * time.Millisecond)
-		status, version, err = lk.ck.Get(lk.name)
+		status, version, err := lk.ck.Get(lk.name)
+		if !(err == rpc.OK) {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
 
-		if err == rpc.OK && status == LockStateUnlocked {
-			putErr := lk.ck.Put(lk.name, LockStateLocked, version)
+		if status == LockStateUnlocked {
+			putErr := lk.ck.Put(lk.name, fmt.Sprintf("%s:%s", LockStateLocked, lk.uid), version)
 			if putErr == rpc.OK {
 				lk.state = LockStateLocked
+				fmt.Printf("Lock acquired: %s, version: %d\n", lk.name, version)
 				break
 			}
+		} else if status == fmt.Sprintf("%s:%s", LockStateLocked, lk.uid) {
+			break
 		}
+
+		// print the results from lk.ck.Get
+		fmt.Printf("Lock %s status: %s, version: %d, error: %v\n", lk.name, status, version, err)
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 
 func (lk *Lock) Release() {
 	// Get the lock status from kv cache
-	status, version, err := lk.ck.Get(lk.name)
-	if err == rpc.OK {
-		if status == LockStateLocked {
-			// Release the lock
-			lk.state = LockStateUnlocked
-			lk.ck.Put(lk.name, lk.state, version)
+	for {
+		status, version, err := lk.ck.Get(lk.name)
+		if err == rpc.OK {
+			if len(status) >= len(LockStateLocked) && status[:len(LockStateLocked)] == LockStateLocked {
+				putErr := lk.ck.Put(lk.name, LockStateUnlocked, version)
+				if putErr == rpc.OK {
+					lk.state = LockStateUnlocked
+					fmt.Printf("Lock released: %s, version: %d\n", lk.name, version)
+					return
+				}
+			} else if status == LockStateUnlocked {
+				return
+			}
 		}
-	} else {
-		fmt.Printf("Error releasing lock: %v\n", err)
+		fmt.Printf("Error releasing lock %s: %v, version: %d, status: %s, retrying...\n", lk.name, err, version, status)
+		time.Sleep(100 * time.Millisecond)
 	}
 }
