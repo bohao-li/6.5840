@@ -22,9 +22,8 @@ type Lock struct {
 	ck kvtest.IKVClerk
 
 	// store lock state, name and version
-	state   string
-	name    string
-	version rpc.Tversion
+	state string
+	name  string
 }
 
 // The tester calls MakeLock() and passes in a k/v clerk; your code can
@@ -33,10 +32,10 @@ type Lock struct {
 // Use l as the key to store the "lock state" (you would have to decide
 // precisely what the lock state is).
 func MakeLock(ck kvtest.IKVClerk, l string) *Lock {
-	lk := &Lock{ck: ck, name: l, state: LockStateUnlocked, version: 0}
+	lk := &Lock{ck: ck, name: l, state: LockStateUnlocked}
 
 	// Initialize the lock state in the key-value store
-	lk.ck.Put(l, lk.state, lk.version)
+	lk.ck.Put(l, lk.state, 0)
 
 	return lk
 }
@@ -44,20 +43,26 @@ func MakeLock(ck kvtest.IKVClerk, l string) *Lock {
 func (lk *Lock) Acquire() {
 	// Get the lock status from kv cache
 	status, version, err := lk.ck.Get(lk.name)
-	if err == rpc.OK {
-		if status == LockStateLocked {
-			// wait until the lock is released, with 1s interval
-			for status == LockStateLocked {
-				time.Sleep(1 * time.Second)
-				status, version, _ = lk.ck.Get(lk.name)
+
+	if err == rpc.OK && status == LockStateUnlocked {
+		// Lock is available, acquire it
+		putErr := lk.ck.Put(lk.name, LockStateLocked, version)
+		if putErr == rpc.OK {
+			lk.state = LockStateLocked
+		}
+	} else {
+		for {
+			time.Sleep(10 * time.Millisecond)
+			status, version, err = lk.ck.Get(lk.name)
+
+			if err == rpc.OK && status == LockStateUnlocked {
+				putErr := lk.ck.Put(lk.name, LockStateLocked, version)
+				if putErr == rpc.OK {
+					lk.state = LockStateLocked
+					break
+				}
 			}
 		}
-		// Lock is available, acquire it
-		lk.state = LockStateLocked
-		lk.version = version + 1
-		lk.ck.Put(lk.name, lk.state, lk.version)
-	} else {
-		fmt.Printf("Error acquiring lock: %v\n", err)
 	}
 }
 
@@ -68,8 +73,7 @@ func (lk *Lock) Release() {
 		if status == LockStateLocked {
 			// Release the lock
 			lk.state = LockStateUnlocked
-			lk.version = version + 1
-			lk.ck.Put(lk.name, lk.state, lk.version)
+			lk.ck.Put(lk.name, lk.state, version)
 		}
 	} else {
 		fmt.Printf("Error releasing lock: %v\n", err)
