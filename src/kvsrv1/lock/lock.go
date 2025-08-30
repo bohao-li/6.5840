@@ -2,6 +2,7 @@ package lock
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"6.5840/kvsrv1/rpc"
@@ -44,6 +45,7 @@ func MakeLock(ck kvtest.IKVClerk, l string) *Lock {
 func (lk *Lock) Acquire() {
 	for {
 		status, version, err := lk.ck.Get(lk.name)
+		// log.Printf("%s: Acquiring lock %s: status: %s, version: %d, error: %v\n", lk.uid, lk.name, status, version, err)
 		if !(err == rpc.OK) {
 			time.Sleep(100 * time.Millisecond)
 			continue
@@ -53,15 +55,15 @@ func (lk *Lock) Acquire() {
 			putErr := lk.ck.Put(lk.name, fmt.Sprintf("%s:%s", LockStateLocked, lk.uid), version)
 			if putErr == rpc.OK {
 				lk.state = LockStateLocked
-				fmt.Printf("Lock acquired: %s, version: %d\n", lk.name, version)
+				// log.Printf("%s: Lock acquired: %s, version: %d\n", lk.uid, lk.name, version)
 				break
 			}
 		} else if status == fmt.Sprintf("%s:%s", LockStateLocked, lk.uid) {
+			// log.Printf("%s: Lock already held by this client: %s, version: %d\n", lk.uid, lk.name, version)
 			break
 		}
 
-		// print the results from lk.ck.Get
-		fmt.Printf("Lock %s status: %s, version: %d, error: %v\n", lk.name, status, version, err)
+		// log.Printf("%s: Lock %s status: %s, version: %d, error: %v\n", lk.uid, lk.name, status, version, err)
 		time.Sleep(100 * time.Millisecond)
 	}
 }
@@ -69,20 +71,27 @@ func (lk *Lock) Acquire() {
 func (lk *Lock) Release() {
 	// Get the lock status from kv cache
 	for {
-		status, version, err := lk.ck.Get(lk.name)
+		rawStatus, version, err := lk.ck.Get(lk.name)
+		// log.Printf("%s: Releasing lock %s: status: %s, version: %d, error: %v\n", lk.uid, lk.name, rawStatus, version, err)
 		if err == rpc.OK {
-			if len(status) >= len(LockStateLocked) && status[:len(LockStateLocked)] == LockStateLocked {
-				putErr := lk.ck.Put(lk.name, LockStateUnlocked, version)
-				if putErr == rpc.OK {
-					lk.state = LockStateUnlocked
-					fmt.Printf("Lock released: %s, version: %d\n", lk.name, version)
-					return
+			if strings.HasPrefix(rawStatus, LockStateLocked) {
+				status := rawStatus[:len(LockStateLocked)]
+				uid := rawStatus[len(LockStateLocked)+1:]
+				// If the lock is held by this client, release it
+				if status == LockStateLocked && uid == lk.uid {
+					putErr := lk.ck.Put(lk.name, LockStateUnlocked, version)
+					if putErr == rpc.OK {
+						lk.state = LockStateUnlocked
+						// log.Printf("%s: Lock released: %s, version: %d\n", lk.uid, lk.name, version)
+						return
+					}
 				}
-			} else if status == LockStateUnlocked {
+			} else if rawStatus == LockStateUnlocked {
+				// log.Printf("%s: Lock %s is already unlocked, version: %d\n", lk.uid, lk.name, version)
 				return
 			}
 		}
-		fmt.Printf("Error releasing lock %s: %v, version: %d, status: %s, retrying...\n", lk.name, err, version, status)
+		// log.Printf("%s: Error releasing lock %s: %v, version: %d, status: %s, retrying...\n", lk.uid, lk.name, err, version, rawStatus)
 		time.Sleep(100 * time.Millisecond)
 	}
 }
