@@ -49,18 +49,19 @@ func (lk *Lock) Acquire() {
 		putErr := lk.ck.Put(lk.name, LockStateLocked, version)
 		if putErr == rpc.OK {
 			lk.state = LockStateLocked
+			return
 		}
-	} else {
-		for {
-			time.Sleep(10 * time.Millisecond)
-			status, version, err = lk.ck.Get(lk.name)
+	}
 
-			if err == rpc.OK && status == LockStateUnlocked {
-				putErr := lk.ck.Put(lk.name, LockStateLocked, version)
-				if putErr == rpc.OK {
-					lk.state = LockStateLocked
-					break
-				}
+	for {
+		time.Sleep(10 * time.Millisecond)
+		status, version, err = lk.ck.Get(lk.name)
+
+		if err == rpc.OK && status == LockStateUnlocked {
+			putErr := lk.ck.Put(lk.name, LockStateLocked, version)
+			if putErr == rpc.OK {
+				lk.state = LockStateLocked
+				break
 			}
 		}
 	}
