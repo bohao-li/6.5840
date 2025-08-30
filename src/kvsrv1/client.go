@@ -1,11 +1,12 @@
 package kvsrv
 
 import (
-	"6.5840/kvsrv1/rpc"
-	"6.5840/kvtest1"
-	"6.5840/tester1"
-)
+	"time"
 
+	"6.5840/kvsrv1/rpc"
+	kvtest "6.5840/kvtest1"
+	tester "6.5840/tester1"
+)
 
 type Clerk struct {
 	clnt   *tester.Clnt
@@ -29,14 +30,21 @@ func MakeClerk(clnt *tester.Clnt, server string) kvtest.IKVClerk {
 // must match the declared types of the RPC handler function's
 // arguments. Additionally, reply must be passed as a pointer.
 func (ck *Clerk) Get(key string) (string, rpc.Tversion, rpc.Err) {
-	// You will have to modify this function.
 	args := rpc.GetArgs{Key: key}
 	var reply rpc.GetReply
 
-	ok := ck.clnt.Call(ck.server, "KVServer.Get", &args, &reply)
-	if ok {
-		return reply.Value, reply.Version, reply.Err
-	} 
+	maxRetries := 5
+	retryCount := 0
+
+	for retryCount < maxRetries {
+		ok := ck.clnt.Call(ck.server, "KVServer.Get", &args, &reply)
+		if ok {
+			return reply.Value, reply.Version, reply.Err
+		}
+		retryCount++
+		time.Sleep(100 * time.Millisecond)
+	}
+	// If all retries fail, return an error indicating failure.
 	return "", 0, rpc.ErrNoKey
 }
 
@@ -58,32 +66,32 @@ func (ck *Clerk) Get(key string) (string, rpc.Tversion, rpc.Err) {
 // must match the declared types of the RPC handler function's
 // arguments. Additionally, reply must be passed as a pointer.
 func (ck *Clerk) Put(key, value string, version rpc.Tversion) rpc.Err {
-    args := rpc.PutArgs{Key: key, Value: value, Version: version}
-    var reply rpc.PutReply
+	args := rpc.PutArgs{Key: key, Value: value, Version: version}
+	var reply rpc.PutReply
 
-    isFirstAttempt := true
-    maxRetries := 5 // Set a reasonable maximum number of retries
-    retryCount := 0
+	isFirstAttempt := true
+	maxRetries := 5 // Set a reasonable maximum number of retries
+	retryCount := 0
 
-    for retryCount < maxRetries {
-        ok := ck.clnt.Call(ck.server, "KVServer.Put", &args, &reply)
-        if ok {
-            if reply.Err == rpc.ErrVersion {
-                if isFirstAttempt {
-                    return rpc.ErrVersion
-                } else {
-                    return rpc.ErrMaybe
-                }
-            }
-            return reply.Err
-        }
+	for retryCount < maxRetries {
+		ok := ck.clnt.Call(ck.server, "KVServer.Put", &args, &reply)
+		if ok {
+			if reply.Err == rpc.ErrVersion {
+				if isFirstAttempt {
+					return rpc.ErrVersion
+				} else {
+					return rpc.ErrMaybe
+				}
+			}
+			return reply.Err
+		}
 
-        // The RPC call failed.
-        isFirstAttempt = false
-        retryCount++
-    }
+		// The RPC call failed.
+		isFirstAttempt = false
+		retryCount++
+	}
 
-    // If the loop finishes without a successful RPC call, it means
-    // we've exhausted all retries.
-    return rpc.ErrNoKey // Or a specific error indicating a timeout/failure
+	// If the loop finishes without a successful RPC call, it means
+	// we've exhausted all retries.
+	return rpc.ErrNoKey // Or a specific error indicating a timeout/failure
 }
